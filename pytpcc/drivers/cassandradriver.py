@@ -25,32 +25,31 @@
 # -----------------------------------------------------------------------
 
 
-import pycassa
-from pycassa.index import *
-from pycassa.system_manager import *
-
 import os
 import logging
 import commands
 import uuid
-from pprint import pprint,pformat
+from pprint import pprint, pformat
 import constants
 
+import pycassa
+from pycassa import system_manager, pool, index, columnfamily
+from pycassa.system_manager import UTF8_TYPE
+
 from abstractdriver import *
+
 ## ==============================================
 ## AbstractDriver
 ## ==============================================
 class CassandraDriver(AbstractDriver):
 
     DEFAULT_CONFIG = {
-        "hostname": ("The host address to the Cassandra database","localhost"),
-        "port": ("Port number",9160),
-        "name": ("Name","tpcc"),
+        "hostname": ("The host address to the Cassandra database", "localhost"),
+        "port": ("Port number", 9160),
+        "name": ("Name", "tpcc"),
         "keyspace":("Keyspace", "Keyspace1"),
-	"replicationfactor": ("ReplicationFactor", 1)
+        "replicationfactor": ("ReplicationFactor", 1)
     }
-
-
 
     def __init__(self, ddl):
         super(CassandraDriver,self).__init__("cassandra",ddl)
@@ -67,189 +66,174 @@ class CassandraDriver(AbstractDriver):
         self.historycf = None
         self.stockcf = None
         self.itemcf = None
+
     def makeDefaultConfig(self):
         return CassandraDriver.DEFAULT_CONFIG
 
-    def loadConfig(self,config):
-	for key in CassandraDriver.DEFAULT_CONFIG.keys():
-            assert key in config, "Missing parameter '%s' in %s configuration" % (key, self.name)        
-        
-         
-        connection =  str(config["hostname"]+':'+str(config["port"]))
-        
-                
+    def loadConfig(self, config):
+        for key in CassandraDriver.DEFAULT_CONFIG.keys():
+            msg = 'Missing parameter "%s" in %s' % (key, self.name)
+            assert key in config, msg
+
+        connection = str(config["hostname"] + ':' + str(config["port"]))
         keyspace = str(config["keyspace"])
-        self.sys = SystemManager(connection)
+        self.sys = system_manager.SystemManager(connection, timeout=3000)
         keyspaces = self.sys.list_keyspaces()
-        fl = 0
-        for i in range(len(keyspaces)):
-            if str(keyspaces[i]) == keyspace:
-               fl = 1
-               break
-        if fl == 0:     
-            self.sys.create_keyspace(keyspace, SIMPLE_STRATEGY,{'replication_factor' : str(config["replicationfactor"])})
-            self.sys.create_column_family(keyspace, 'NEW_ORDER', comparator_type = UTF8_TYPE)
-            self.sys.create_column_family(keyspace, 'ORDERS', comparator_type = UTF8_TYPE)
-            self.sys.create_column_family(keyspace, 'ORDER_LINE', comparator_type = UTF8_TYPE)
-            self.sys.create_column_family(keyspace, 'CUSTOMER', comparator_type = UTF8_TYPE)
-            self.sys.create_column_family(keyspace, 'WAREHOUSE', comparator_type = UTF8_TYPE)
-            self.sys.create_column_family(keyspace, 'DISTRICT', comparator_type = UTF8_TYPE)
-            self.sys.create_column_family(keyspace, 'HISTORY', comparator_type = UTF8_TYPE)
-            self.sys.create_column_family(keyspace, 'STOCK', comparator_type = UTF8_TYPE)
-            self.sys.create_column_family(keyspace, 'ITEM', comparator_type = UTF8_TYPE)
-        
 
-            self.sys.alter_column(keyspace,'WAREHOUSE','W_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'WAREHOUSE','W_NAME',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'WAREHOUSE','W_STREET_1',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'WAREHOUSE','W_STREET_2',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'WAREHOUSE','W_CITY',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'WAREHOUSE','W_STATE',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'WAREHOUSE','W_ZIP',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'WAREHOUSE','W_TAX',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'WAREHOUSE','W_YTD',UTF8_TYPE)
-        
-        
-            self.sys.alter_column(keyspace,'DISTRICT','D_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'DISTRICT','D_W_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'DISTRICT','D_NAME',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'DISTRICT','D_STREET_1',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'DISTRICT','D_STREET_2',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'DISTRICT','D_CITY',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'DISTRICT','D_STATE',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'DISTRICT','D_ZIP',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'DISTRICT','D_TAX',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'DISTRICT','D_YTD',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'DISTRICT','D_NEXT_O_ID',UTF8_TYPE)
+        if keyspace not in keyspaces:
+            self.sys.create_keyspace(
+                keyspace,
+                system_manager.SIMPLE_STRATEGY,
+                {'replication_factor': str(config["replicationfactor"])})
 
-        
-            self.sys.alter_column(keyspace,'CUSTOMER','C_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'CUSTOMER','C_D_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'CUSTOMER','C_W_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'CUSTOMER','C_FIRST',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'CUSTOMER','C_MIDDLE',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'CUSTOMER','C_LAST',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'CUSTOMER','C_STREET_1',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'CUSTOMER','C_STREET_2',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'CUSTOMER','C_CITY',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'CUSTOMER','C_STATE',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'CUSTOMER','C_ZIP',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'CUSTOMER','C_PHONE',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'CUSTOMER','C_SINCE',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'CUSTOMER','C_CREDIT',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'CUSTOMER','C_CREDIT_LIM',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'CUSTOMER','C_DISCOUNT',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'CUSTOMER','C_BALANCE',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'CUSTOMER','C_YTD_PAYMENT',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'CUSTOMER','C_PAYMENT_CNT',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'CUSTOMER','C_DELIVERY_CNT',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'CUSTOMER','C_DATA',UTF8_TYPE)
-        
-        
-        
-        
-        
+            self.sys.create_column_family(keyspace, 'NEW_ORDER', comparator_type=UTF8_TYPE)
+            self.sys.create_column_family(keyspace, 'ORDERS', comparator_type=UTF8_TYPE)
+            self.sys.create_column_family(keyspace, 'ORDER_LINE', comparator_type=UTF8_TYPE)
+            self.sys.create_column_family(keyspace, 'CUSTOMER', comparator_type=UTF8_TYPE)
+            self.sys.create_column_family(keyspace, 'WAREHOUSE', comparator_type=UTF8_TYPE)
+            self.sys.create_column_family(keyspace, 'DISTRICT', comparator_type=UTF8_TYPE)
+            self.sys.create_column_family(keyspace, 'HISTORY', comparator_type=UTF8_TYPE)
+            self.sys.create_column_family(keyspace, 'STOCK', comparator_type=UTF8_TYPE)
+            self.sys.create_column_family(keyspace, 'ITEM', comparator_type=UTF8_TYPE)
 
-        
-        
-            self.sys.alter_column(keyspace,'HISTORY','H_C_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'HISTORY','H_C_D_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'HISTORY','H_C_W_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'HISTORY','H_D_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'HISTORY','H_W_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'HISTORY','H_DATE',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'HISTORY','H_AMOUNT',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'HISTORY','H_DATA',UTF8_TYPE)
-        
-        
-        
-            self.sys.alter_column(keyspace,'NEW_ORDER','NO_O_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'NEW_ORDER','NO_D_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'NEW_ORDER','NO_W_ID',UTF8_TYPE)
-        
-            self.sys.alter_column(keyspace,'ORDERS','O_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'ORDERS','O_D_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'ORDERS','O_W_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'ORDERS','O_C_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'ORDERS','O_ENTRY_D',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'ORDERS','O_CARRIER_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'ORDERS','O_OL_CNT',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'ORDERS','O_ALL_LOCAL',UTF8_TYPE)
-        
-        
-        
-            self.sys.alter_column(keyspace,'ORDER_LINE','OL_O_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'ORDER_LINE','OL_D_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'ORDER_LINE','OL_W_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'ORDER_LINE','OL_NUMBER',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'ORDER_LINE','OL_I_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'ORDER_LINE','OL_SUPPLY_W_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'ORDER_LINE','OL_DELIVERY_D',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'ORDER_LINE','OL_QUANTITY',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'ORDER_LINE','OL_AMOUNT',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'ORDER_LINE','OL_DIST_INFO',UTF8_TYPE)
-        
-        
-            self.sys.alter_column(keyspace,'ITEM','I_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'ITEM','I_IM_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'ITEM','I_NAME',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'ITEM','I_PRICE',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'ITEM','I_DATA',UTF8_TYPE)
-        
-        
-            self.sys.alter_column(keyspace,'STOCK','S_I_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'STOCK','S_W_ID',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'STOCK','S_QUANTITY',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'STOCK','S_DIST_01',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'STOCK','S_DIST_02',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'STOCK','S_DIST_03',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'STOCK','S_DIST_04',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'STOCK','S_DIST_05',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'STOCK','S_DIST_06',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'STOCK','S_DIST_07',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'STOCK','S_DIST_08',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'STOCK','S_DIST_09',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'STOCK','S_DIST_10',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'STOCK','S_YTD',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'STOCK','S_ORDER_CNT',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'STOCK','S_REMOTE_CNT',UTF8_TYPE)
-            self.sys.alter_column(keyspace,'STOCK','S_DATA',UTF8_TYPE)
-        
-        
-            self.sys.create_index(keyspace,'CUSTOMER','C_ID', UTF8_TYPE)
-            self.sys.create_index(keyspace,'CUSTOMER','C_D_ID', UTF8_TYPE)
-            self.sys.create_index(keyspace,'CUSTOMER','C_W_ID', UTF8_TYPE)
-            self.sys.create_index(keyspace,'CUSTOMER','C_LAST', UTF8_TYPE)
-            self.sys.create_index(keyspace,'NEW_ORDER','NO_O_ID', UTF8_TYPE)
-            self.sys.create_index(keyspace,'NEW_ORDER','NO_D_ID', UTF8_TYPE)
-            self.sys.create_index(keyspace,'NEW_ORDER','NO_W_ID', UTF8_TYPE)
-            self.sys.create_index(keyspace,'ORDERS','O_ID', UTF8_TYPE)
-            self.sys.create_index(keyspace,'ORDERS','O_D_ID', UTF8_TYPE)
-            self.sys.create_index(keyspace,'ORDERS','O_W_ID', UTF8_TYPE)
-            self.sys.create_index(keyspace,'ORDERS','O_C_ID', UTF8_TYPE)
-            self.sys.create_index(keyspace,'ORDER_LINE','OL_O_ID', UTF8_TYPE)
-            self.sys.create_index(keyspace,'ORDER_LINE','OL_D_ID', UTF8_TYPE)
-            self.sys.create_index(keyspace,'ORDER_LINE','OL_W_ID', UTF8_TYPE)
-            self.sys.create_index(keyspace,'STOCK','S_W_ID', UTF8_TYPE)
-            self.sys.create_index(keyspace,'STOCK','S_QUANTITY', UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'WAREHOUSE', 'W_ID', UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'WAREHOUSE', 'W_NAME', UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'WAREHOUSE', 'W_STREET_1', UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'WAREHOUSE', 'W_STREET_2', UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'WAREHOUSE', 'W_CITY', UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'WAREHOUSE', 'W_STATE', UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'WAREHOUSE', 'W_ZIP', UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'WAREHOUSE', 'W_TAX', UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'WAREHOUSE', 'W_YTD', UTF8_TYPE)
 
-                
-        self.conn = pycassa.connect(str(config["keyspace"]),[connection])
-        self.new_ordercf=pycassa.ColumnFamily(self.conn,'NEW_ORDER')
-        self.orderscf=pycassa.ColumnFamily(self.conn, 'ORDERS')
-        self.order_linecf=pycassa.ColumnFamily(self.conn, 'ORDER_LINE')
-        self.customercf=pycassa.ColumnFamily(self.conn, 'CUSTOMER')
-        self.warehousecf = pycassa.ColumnFamily(self.conn,'WAREHOUSE')
-        self.districtcf = pycassa.ColumnFamily(self.conn, 'DISTRICT')
-        self.historycf = pycassa.ColumnFamily(self.conn,'HISTORY')
-        self.stockcf = pycassa.ColumnFamily(self.conn,'STOCK')
-        self.itemcf = pycassa.ColumnFamily(self.conn, 'ITEM')
+            self.sys.alter_column(keyspace, 'DISTRICT', 'D_ID', UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'DISTRICT', 'D_W_ID', UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'DISTRICT', 'D_NAME', UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'DISTRICT', 'D_STREET_1', UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'DISTRICT', 'D_STREET_2', UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'DISTRICT', 'D_CITY', UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'DISTRICT', 'D_STATE', UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'DISTRICT', 'D_ZIP', UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'DISTRICT', 'D_TAX', UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'DISTRICT', 'D_YTD', UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'DISTRICT', 'D_NEXT_O_ID', UTF8_TYPE)
+
+            self.sys.alter_column(keyspace, 'CUSTOMER', 'C_ID', UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'CUSTOMER', 'C_D_ID', UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'CUSTOMER', 'C_W_ID', UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'CUSTOMER', 'C_FIRST', UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'CUSTOMER', 'C_MIDDLE',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'CUSTOMER', 'C_LAST',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'CUSTOMER', 'C_STREET_1',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'CUSTOMER', 'C_STREET_2',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'CUSTOMER', 'C_CITY',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'CUSTOMER', 'C_STATE',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'CUSTOMER', 'C_ZIP',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'CUSTOMER', 'C_PHONE',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'CUSTOMER', 'C_SINCE',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'CUSTOMER', 'C_CREDIT',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'CUSTOMER', 'C_CREDIT_LIM',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'CUSTOMER', 'C_DISCOUNT',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'CUSTOMER', 'C_BALANCE',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'CUSTOMER', 'C_YTD_PAYMENT',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'CUSTOMER', 'C_PAYMENT_CNT',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'CUSTOMER', 'C_DELIVERY_CNT',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'CUSTOMER', 'C_DATA',UTF8_TYPE)
+
+            self.sys.alter_column(keyspace, 'HISTORY','H_C_ID',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'HISTORY','H_C_D_ID',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'HISTORY','H_C_W_ID',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'HISTORY','H_D_ID',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'HISTORY','H_W_ID',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'HISTORY','H_DATE',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'HISTORY','H_AMOUNT',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'HISTORY','H_DATA',UTF8_TYPE)
+
+            self.sys.alter_column(keyspace, 'NEW_ORDER','NO_O_ID',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'NEW_ORDER','NO_D_ID',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'NEW_ORDER','NO_W_ID',UTF8_TYPE)
+
+            self.sys.alter_column(keyspace, 'ORDERS','O_ID',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'ORDERS','O_D_ID',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'ORDERS','O_W_ID',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'ORDERS','O_C_ID',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'ORDERS','O_ENTRY_D',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'ORDERS','O_CARRIER_ID',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'ORDERS','O_OL_CNT',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'ORDERS','O_ALL_LOCAL',UTF8_TYPE)
+
+            self.sys.alter_column(keyspace, 'ORDER_LINE','OL_O_ID',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'ORDER_LINE','OL_D_ID',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'ORDER_LINE','OL_W_ID',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'ORDER_LINE','OL_NUMBER',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'ORDER_LINE','OL_I_ID',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'ORDER_LINE','OL_SUPPLY_W_ID',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'ORDER_LINE','OL_DELIVERY_D',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'ORDER_LINE','OL_QUANTITY',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'ORDER_LINE','OL_AMOUNT',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'ORDER_LINE','OL_DIST_INFO',UTF8_TYPE)
+
+            self.sys.alter_column(keyspace, 'ITEM','I_ID',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'ITEM','I_IM_ID',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'ITEM','I_NAME',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'ITEM','I_PRICE',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'ITEM','I_DATA',UTF8_TYPE)
+
+            self.sys.alter_column(keyspace, 'STOCK','S_I_ID',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'STOCK','S_W_ID',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'STOCK','S_QUANTITY',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'STOCK','S_DIST_01',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'STOCK','S_DIST_02',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'STOCK','S_DIST_03',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'STOCK','S_DIST_04',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'STOCK','S_DIST_05',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'STOCK','S_DIST_06',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'STOCK','S_DIST_07',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'STOCK','S_DIST_08',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'STOCK','S_DIST_09',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'STOCK','S_DIST_10',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'STOCK','S_YTD',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'STOCK','S_ORDER_CNT',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'STOCK','S_REMOTE_CNT',UTF8_TYPE)
+            self.sys.alter_column(keyspace, 'STOCK','S_DATA',UTF8_TYPE)
+
+            self.sys.create_index(keyspace, 'CUSTOMER','C_ID', UTF8_TYPE)
+            self.sys.create_index(keyspace, 'CUSTOMER','C_D_ID', UTF8_TYPE)
+            self.sys.create_index(keyspace, 'CUSTOMER','C_W_ID', UTF8_TYPE)
+            self.sys.create_index(keyspace, 'CUSTOMER','C_LAST', UTF8_TYPE)
+            self.sys.create_index(keyspace, 'NEW_ORDER','NO_O_ID', UTF8_TYPE)
+            self.sys.create_index(keyspace, 'NEW_ORDER','NO_D_ID', UTF8_TYPE)
+            self.sys.create_index(keyspace, 'NEW_ORDER','NO_W_ID', UTF8_TYPE)
+            self.sys.create_index(keyspace, 'ORDERS','O_ID', UTF8_TYPE)
+            self.sys.create_index(keyspace, 'ORDERS','O_D_ID', UTF8_TYPE)
+            self.sys.create_index(keyspace, 'ORDERS','O_W_ID', UTF8_TYPE)
+            self.sys.create_index(keyspace, 'ORDERS','O_C_ID', UTF8_TYPE)
+            self.sys.create_index(keyspace, 'ORDER_LINE','OL_O_ID', UTF8_TYPE)
+            self.sys.create_index(keyspace, 'ORDER_LINE','OL_D_ID', UTF8_TYPE)
+            self.sys.create_index(keyspace, 'ORDER_LINE','OL_W_ID', UTF8_TYPE)
+            self.sys.create_index(keyspace, 'STOCK','S_W_ID', UTF8_TYPE)
+            self.sys.create_index(keyspace, 'STOCK','S_QUANTITY', UTF8_TYPE)
+
+        self.conn = pool.ConnectionPool(keyspace=keyspace,
+                                        server_list=[connection],
+                                        timeout=3000)
+
+        self.new_ordercf = columnfamily.ColumnFamily(self.conn,'NEW_ORDER')
+        self.orderscf = columnfamily.ColumnFamily(self.conn, 'ORDERS')
+        self.order_linecf = columnfamily.ColumnFamily(self.conn, 'ORDER_LINE')
+        self.customercf = columnfamily.ColumnFamily(self.conn, 'CUSTOMER')
+        self.warehousecf = columnfamily.ColumnFamily(self.conn,'WAREHOUSE')
+        self.districtcf = columnfamily.ColumnFamily(self.conn, 'DISTRICT')
+        self.historycf = columnfamily.ColumnFamily(self.conn,'HISTORY')
+        self.stockcf = columnfamily.ColumnFamily(self.conn,'STOCK')
+        self.itemcf = columnfamily.ColumnFamily(self.conn, 'ITEM')
 
     def loadTuples(self, tableName, tuples):
         if len(tuples) == 0:
              return
         logging.debug("loading")
-        col_fam = pycassa.ColumnFamily(self.conn, tableName)
+        col_fam = columnfamily.ColumnFamily(self.conn, tableName)
+
         if tableName == 'ITEM':
             for row in tuples:
                 row_key = str(row[0]).zfill(5)
@@ -259,20 +243,23 @@ class CassandraDriver(AbstractDriver):
                 i_price = str(row[3])
                 i_data = str(row[4])
                 col_fam.insert(row_key, {'I_ID':i_id, 'I_IM_ID':i_im_id, 'I_NAME':i_name, 'I_PRICE':i_price, 'I_DATA':i_data})
+
         if tableName == 'WAREHOUSE':
-             if len(tuples[0])!=9: return
-             for row in tuples: 
-                 row_key = str(row[0]).zfill(5)  #w_ID 
-                 w_id = str(row[0])
-                 w_name =str(row[1])
-                 w_street_1 = str(row[2])
-                 w_street_2 = str(row[3])
-                 w_city = str(row[4])
-                 w_state = str(row[5])
-                 w_zip = str(row[6])
-                 w_tax = str(row[7])
-                 w_ytd = str(row[8])
-                 col_fam.insert(row_key,{'W_ID':w_id, 'W_NAME':w_name, 'W_STREET_1': w_street_1, 'W_STREET_2': w_street_2, 'W_CITY':w_city, 'W_STATE':w_state, 'W_ZIP':w_zip, 'W_TAX':w_tax, 'W_YTD':w_ytd})
+            if len(tuples[0]) != 9:
+                return
+            for row in tuples:
+                row_key = str(row[0]).zfill(5)  #w_ID
+                w_id = str(row[0])
+                w_name =str(row[1])
+                w_street_1 = str(row[2])
+                w_street_2 = str(row[3])
+                w_city = str(row[4])
+                w_state = str(row[5])
+                w_zip = str(row[6])
+                w_tax = str(row[7])
+                w_ytd = str(row[8])
+                col_fam.insert(row_key,{'W_ID':w_id, 'W_NAME':w_name, 'W_STREET_1': w_street_1, 'W_STREET_2': w_street_2, 'W_CITY':w_city, 'W_STATE':w_state, 'W_ZIP':w_zip, 'W_TAX':w_tax, 'W_YTD':w_ytd})
+
         if tableName == 'CUSTOMER':
             for row in tuples:
                 row_key = str(row[0]).zfill(5)+ str(row[1]).zfill(5)+ str(row[2]).zfill(5)
@@ -334,7 +321,7 @@ class CassandraDriver(AbstractDriver):
                 s_remote_cnt = str(row[15])
                 s_data = str(row[16])
                 col_fam.insert(row_key,{'S_I_ID':s_i_id, 'S_W_ID':s_w_id, 'S_QUANTITY':s_quantity, 'S_DIST_01':s_dist_01,'S_DIST_02':s_dist_02,'S_DIST_03':s_dist_03,'S_DIST_04':s_dist_04,'S_DIST_05':s_dist_05,'S_DIST_06':s_dist_06,'S_DIST_07':s_dist_07,'S_DIST_08':s_dist_08,'S_DIST_09':s_dist_09,'S_DIST_10':s_dist_10, 'S_YTD': s_ytd, 'S_ORDER_CNT':s_order_cnt, 'S_REMOTE_CNT':s_remote_cnt, 'S_DATA':s_data})
-        
+
         if tableName == 'DISTRICT':
             for row in tuples:
                 row_key = str(row[0]).zfill(5)+str(row[1]).zfill(5)
@@ -350,7 +337,7 @@ class CassandraDriver(AbstractDriver):
                 d_ytd = str(row[9])
                 d_next_o_id = str(row[10])
                 col_fam.insert(row_key,{'D_ID':d_id, 'D_W_ID':d_w_id, 'D_NAME':d_name, 'D_STREET_1':d_street_1, 'D_STREET_2':d_street_2,'D_CITY':d_city, 'D_STATE':d_state, 'D_ZIP':d_zip, 'D_TAX':d_tax, 'D_YTD':d_ytd, 'D_NEXT_O_ID':d_next_o_id})
-                
+
         if tableName == 'NEW_ORDER':
             for row in tuples:
                 row_key = str(row[0]).zfill(5)+str(row[1]).zfill(5)+str(row[2]).zfill(5)
@@ -358,6 +345,7 @@ class CassandraDriver(AbstractDriver):
                 no_d_id = str(row[1])
                 no_w_id = str(row[2])
                 col_fam.insert(row_key,{'NO_O_ID':no_o_id, 'NO_D_ID':no_d_id, 'NO_W_ID':no_w_id})
+
         if tableName == 'ORDER_LINE':
             for row in tuples:
                 row_key = str(row[0]).zfill(5)+str(row[1]).zfill(5)+str(row[2]).zfill(5)+str(row[3]).zfill(5)
@@ -372,7 +360,7 @@ class CassandraDriver(AbstractDriver):
                 ol_amount = str(row[8])
                 ol_dist_info = str(row[9])
                 col_fam.insert(row_key,{'OL_O_ID':ol_o_id, 'OL_D_ID':ol_d_id, 'OL_W_ID':ol_w_id, 'OL_NUMBER':ol_number, 'OL_I_ID':ol_i_id, 'OL_SUPPLY_W_ID':ol_supply_w_id, 'OL_DELIVERY_D': ol_delivery_d, 'OL_QUANTITY':ol_quantity,'OL_AMOUNT':ol_amount, 'OL_DIST_INFO':ol_dist_info})
-        
+
         if tableName == 'HISTORY':
             for i in range(len(tuples)):
                 #row_key = str(i)
@@ -386,35 +374,28 @@ class CassandraDriver(AbstractDriver):
                 h_amount = str(tuples[i][6])
                 h_data = str(tuples[i][7])
                 col_fam.insert(row_key, {'H_C_ID':h_c_id, 'H_C_D_ID':h_c_d_id, 'H_C_W_ID':h_c_w_id, 'H_D_ID':h_d_id, 'H_W_ID':h_w_id, 'H_DATE':h_date,'H_AMOUNT':h_amount, 'H_DATA':h_data})
-#   print tableName+'--' + str(len(tuples))
-                 
+
     def loadFinish(self):
          logging.info("Commiting changes to database")
-
-            
-
 
     ##-----------------------------------
     ## doDelivery
     ##----------------------------------
     def doDelivery(self, params):
-        logging.debug("do delivery")    
+        logging.debug("do delivery")
 
         w_id = params["w_id"]
         o_carrier_id = params["o_carrier_id"]
         ol_delivery_d = params["ol_delivery_d"]
-        
-        
-        
-        result = [ ]
+
+        result = []
         for d_id in range(1, constants.DISTRICTS_PER_WAREHOUSE+1):
             did_expr = create_index_expression('NO_D_ID',str(d_id))
-            wid_expr = create_index_expression('NO_W_ID',str(w_id))    
+            wid_expr = create_index_expression('NO_W_ID',str(w_id))
             clause = create_index_clause([did_expr,wid_expr],count=1)
             newOrder=self.new_ordercf.get_indexed_slices(clause)
             flag=0
             for key, column in newOrder:
-                #print column
                 no_o_id=column['NO_O_ID']
                 flag=1
             if flag==0:
@@ -423,16 +404,11 @@ class CassandraDriver(AbstractDriver):
                 continue
             if no_o_id==None:
                 continue
-    #        print no_o_id
-    #        print d_id
-    #        print w_id
             orders_rowkey=no_o_id.zfill(5)+str(d_id).zfill(5)+str(w_id).zfill(5)
-            #print orders_rowkey
             o=self.orderscf.get(orders_rowkey)
-            
 
             c_id=str(o['O_C_ID'])
-        
+
             oid_expr = create_index_expression('OL_O_ID',str(no_o_id))
             did_expr = create_index_expression('OL_D_ID',str(d_id))
             wid_expr = create_index_expression('OL_W_ID',str(w_id))
@@ -453,15 +429,15 @@ class CassandraDriver(AbstractDriver):
             old_balance=float(c['C_BALANCE'])
             new_balance=str(old_balance+ol_total)
             self.customercf.insert(str(c_id).zfill(5)+str(d_id).zfill(5)+str(w_id).zfill(5),{'C_BALANCE': str(new_balance)})
-                
+
             result.append((str(d_id),str(no_o_id)))
         ##for
-        
+
         return result
+
     ##-----------------------------------
     ## doNewOrder
     ##-----------------------------------
-
     def doNewOrder(self, params):
         logging.debug("do new order")
         w_id = params["w_id"]
@@ -470,8 +446,7 @@ class CassandraDriver(AbstractDriver):
         o_entry_d = params["o_entry_d"]
         i_ids = params["i_ids"]
         i_w_ids = params["i_w_ids"]
-        i_qtys = params["i_qtys"]        
-
+        i_qtys = params["i_qtys"]
 
         assert len(i_ids) > 0
         assert len(i_ids) ==len(i_w_ids)
@@ -483,18 +458,13 @@ class CassandraDriver(AbstractDriver):
             all_local = all_local and i_w_ids[i] == w_id
             ol_i_id = i_ids[i]
             itm=self.itemcf.get(str(ol_i_id).zfill(5), columns=['I_PRICE','I_NAME','I_DATA'])
-            items.append(itm)   
+            items.append(itm)
         assert len(items)==len(i_ids)
-            
 
         for itm in items:
             if len(itm)==0:
                 return
 
-        
-
-        
-            
         #getWarehouseTaxRate
         w_tax_c = self.warehousecf.get(str(w_id).zfill(5),columns=['W_TAX'])
         w_tax =float(w_tax_c['W_TAX'])
@@ -504,31 +474,27 @@ class CassandraDriver(AbstractDriver):
         d_tax = float(o['D_TAX'])
         #incrementNextOrderId
         d_next_o_id = int(o['D_NEXT_O_ID'])
-            
+
         #getCustomer
         row_key = str(c_id).zfill(5) +str(d_id).zfill(5)+str(w_id).zfill(5)
         customer_info = self.customercf.get(row_key,columns=['C_DISCOUNT','C_LAST','C_CREDIT'])
         c_discount=float(customer_info['C_DISCOUNT'])
-        
+
         o_carrier_id = constants.NULL_CARRIER_ID
         ol_cnt = len(i_ids)
-    
+
         #incrementNextOrderId
         row_key = str(d_id).zfill(5)+str(w_id).zfill(5)
         self.districtcf.insert(row_key,{'D_NEXT_O_ID':str(d_next_o_id+1)})
-            
+
         #createOrder
-        
         order_rowkey=str(d_next_o_id).zfill(5)+str(d_id).zfill(5)+str(w_id).zfill(5)
-    #    print "d_next_o_id " +str(d_next_o_id) 
-    #    print "d_id "+str(d_id)
-    #    print "order_rowkey " + order_rowkey
         self.orderscf.insert(order_rowkey,{'O_ID':str(d_next_o_id), 'O_D_ID':str(d_id), 'O_W_ID':str(w_id), 'O_C_ID':str(c_id), 'O_ENTRY_D':str(o_entry_d), 'O_CARRIER_ID':str(o_carrier_id), 'O_OL_CNT':str(ol_cnt), 'O_ALL_LOCAL':str(all_local)})
-            
+
         #createNewOrder
         neworder_rowkey=str(d_next_o_id).zfill(5)+str(d_id).zfill(5)+str(w_id).zfill(5)
-    #    print 'neworder_rowkey ' + neworder_rowkey
         self.new_ordercf.insert(neworder_rowkey, {'NO_O_ID':str(d_next_o_id), 'NO_D_ID':str(d_id), 'NO_W_ID':str(w_id)})
+
         #getItemInfo
         total = 0
         item_data = [ ]
@@ -543,12 +509,13 @@ class CassandraDriver(AbstractDriver):
             ol_number  = i+1
             ol_supply_w_id = i_w_ids[i]
             ol_quantity = i_qtys[i]
-    
+
             stockInfo = self.stockcf.get(str(ol_i_id).zfill(5)+str(ol_supply_w_id).zfill(5))
+
         #"updateStock": "UPDATE STOCK SET S_QUANTITY = ?, S_YTD = ?, S_ORDER_CNT = ?, S_REMOTE_CNT = ? WHERE S_I_ID = ? AND S_W_ID = ?", # s_quantity, s_order_cnt, s_remote_cnt, ol_i_id, ol_supply_w_id
             if len(stockInfo)==0:
-                 logging.warn("No STOCK record for (ol_i_id=%d, ol_supply_w_id=%d)" % (ol_i_id, ol_supply_w_id))
-                 continue
+                logging.warn("No STOCK record for (ol_i_id=%d, ol_supply_w_id=%d)" % (ol_i_id, ol_supply_w_id))
+                continue
             s_quantity = int(stockInfo['S_QUANTITY'])
             s_ytd = int(stockInfo['S_YTD'])
             s_order_cnt = int(stockInfo['S_ORDER_CNT'])
@@ -559,8 +526,7 @@ class CassandraDriver(AbstractDriver):
             else:
                 s_dist_col='S_DIST_'+str(d_id)
             s_dist_xx = stockInfo[s_dist_col]
-            
-                
+
             ## Update stock
             s_ytd += ol_quantity
             if s_quantity >= ol_quantity + 10:
@@ -585,10 +551,10 @@ class CassandraDriver(AbstractDriver):
         total *= (1 - c_discount) * (1 + w_tax + d_tax)
         misc = [ (w_tax, d_tax, d_next_o_id, total) ]
         return [ customer_info, misc, item_data ]
-        ##----------------------------
+
+    ##----------------------------
     ## doPayment
     ##----------------------------
-
     def doPayment(self, params):
         logging.debug("do payment")
         w_id = params["w_id"]
@@ -600,7 +566,7 @@ class CassandraDriver(AbstractDriver):
         c_last = params["c_last"]
         h_date = params["h_date"]
 
-        
+
         if c_id != None:
             #getCustomerByCustomerId
             row_key = str(c_id).zfill(5) +str(d_id).zfill(5)+str(w_id).zfill(5)
@@ -617,15 +583,14 @@ class CassandraDriver(AbstractDriver):
             c_2_expr = create_index_expression('C_D_ID',str(d_id))
             c_3_expr = create_index_expression('C_LAST',str(c_last))
             clause = create_index_clause([c_1_expr,c_2_expr,c_3_expr],count=1000)
-            
+
             newcustomer = self.customercf.get_indexed_slices(clause)
             firstnames=[]
-            
+
             namecnt=0
             for key, column in newcustomer:
                 firstnames.append(column['C_FIRST'])
                 namecnt+=1
-        #    print namecnt
             index = (namecnt-1)/2
             firstname=firstnames[index]
             c_4_expr = create_index_expression('C_LAST',str(c_last))
@@ -644,9 +609,9 @@ class CassandraDriver(AbstractDriver):
         district = self.districtcf.get(str(d_id).zfill(5)+str(w_id).zfill(5))
 
         self.warehousecf.insert(str(w_id).zfill(5),{'W_YTD':str(float(warehouse['W_YTD'])+h_amount)})
-        
+
         self.districtcf.insert(str(d_id).zfill(5)+str(w_id).zfill(5),{'D_YTD': str(float(district['D_YTD'])+h_amount)})
-        
+
         if c_credit == constants.BAD_CREDIT:
             newData = " ".join(map(str, [c_id, c_d_id, c_w_id, d_id, w_id, h_amount]))
             c_data = (newData + "|" + c_data)
@@ -654,10 +619,11 @@ class CassandraDriver(AbstractDriver):
             self.customercf.insert(str(c_id).zfill(5)+str(c_d_id).zfill(5)+str(c_w_id).zfill(5),{ 'C_BALANCE' : str(c_balance), 'C_YTD_PAYMENT':str(c_ytd_payment) , 'C_PAYMENT_CNT':str(c_payment_cnt), 'C_DATA' : str(c_data)})
         else:
             c_data = ""
-            self.customercf.insert(str(c_id).zfill(5)+str(c_d_id).zfill(5)+str(c_w_id).zfill(5),{ 'C_BALANCE' : str(c_balance), 'C_YTD_PAYMENT':str(c_ytd_payment) , 'C_PAYMENT_CNT':str(c_payment_cnt)})        
+            self.customercf.insert(str(c_id).zfill(5)+str(c_d_id).zfill(5)+str(c_w_id).zfill(5),{ 'C_BALANCE' : str(c_balance), 'C_YTD_PAYMENT':str(c_ytd_payment) , 'C_PAYMENT_CNT':str(c_payment_cnt)})
         h_data= "%s    %s" % (warehouse['W_NAME'], district['D_NAME'])
         self.historycf.insert(str(uuid.uuid1()), {'H_C_ID':str(c_id), 'H_C_D_ID':str(c_d_id), 'H_C_W_ID':str(c_w_id), 'H_D_ID':str(d_id), 'H_W_ID':str(w_id), 'H_DATE':str(h_date),'H_AMOUNT':str(h_amount), 'H_DATA':str(h_data)})
         return [warehouse, district, customer]
+
     ##-----------------------------------
     ## doOrderStatus
     ##-----------------------------------
@@ -670,7 +636,6 @@ class CassandraDriver(AbstractDriver):
 
         assert w_id, pformat(params)
         assert d_id, pformat(params)
-        
 
         if c_id == None:
             last_expr = create_index_expression('C_LAST',str(c_last))
@@ -702,7 +667,7 @@ class CassandraDriver(AbstractDriver):
         wid_expr = create_index_expression('O_W_ID',str(w_id))
         clause = create_index_clause([cid_expr,did_expr,wid_expr],count=100000)
         all_orders=self.orderscf.get_indexed_slices(clause)
-        
+
         last_order_oid=0
         order=[]
         for key, column in all_orders:
@@ -711,8 +676,7 @@ class CassandraDriver(AbstractDriver):
         if last_order_oid>0:
             o=self.orderscf.get(str(last_order_oid).zfill(5)+str(d_id).zfill(5)+str(w_id).zfill(5))
             order=[o['O_ID'],o['O_CARRIER_ID'],o['O_ENTRY_D']]
-        
-        
+
         orderLines = []
         if last_order_oid>0:
             oid_expr = create_index_expression('OL_O_ID',str(last_order_oid))
@@ -725,30 +689,25 @@ class CassandraDriver(AbstractDriver):
 
         return [ customer, order, orderLines ]
 
-        ##----------------------------
+    ##----------------------------
     ## doStockLevel
     ##----------------------------
-
-
     def doStockLevel(self, params):
         logging.info("do stocklevel")
         w_id = params["w_id"]
         d_id = params["d_id"]
         threshold = params["threshold"]
 
-    
-        #"getOId": "SELECT D_NEXT_O_ID FROM DISTRICT WHERE D_W_ID = ? AND D_ID = ?", 
+        #"getOId": "SELECT D_NEXT_O_ID FROM DISTRICT WHERE D_W_ID = ? AND D_ID = ?",
         d = self.districtcf.get(str(d_id).zfill(5)+str(w_id).zfill(5),columns=['D_NEXT_O_ID'])
         assert d
         #getStockCount
         o_id = d['D_NEXT_O_ID']
-    
-        
+
         s_q_expr = create_index_expression('S_QUANTITY',str(threshold), LT)
         s_q_expr2 = create_index_expression('S_W_ID',str(w_id))
         clause = create_index_clause([s_q_expr,s_q_expr2])
         newstock = self.stockcf.get_indexed_slices(clause)
-
 
         ol_expr = create_index_expression('OL_W_ID',str(w_id))
         ol_expr2 = create_index_expression('OL_D_ID',str(d_id))
@@ -756,7 +715,7 @@ class CassandraDriver(AbstractDriver):
         ol_expr4 = create_index_expression('OL_O_ID', str(int(o_id)-20),GTE)
         clause2 = create_index_clause([ol_expr,ol_expr2])
         neworderline = self.order_linecf.get_indexed_slices(clause2)
-        
+
         count = 0
         for key, column in newstock:
             for key2, column2 in neworderline:
@@ -766,6 +725,4 @@ class CassandraDriver(AbstractDriver):
                 ol_i_id = int(tmp2)
                 if s_i_id == ol_i_id:
                     count= count+1
-        
-        return count                
-
+        return count
