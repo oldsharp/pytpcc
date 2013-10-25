@@ -390,9 +390,9 @@ class CassandraDriver(AbstractDriver):
 
         result = []
         for d_id in range(1, constants.DISTRICTS_PER_WAREHOUSE+1):
-            did_expr = create_index_expression('NO_D_ID',str(d_id))
-            wid_expr = create_index_expression('NO_W_ID',str(w_id))
-            clause = create_index_clause([did_expr,wid_expr],count=1)
+            did_expr = index.create_index_expression('NO_D_ID',str(d_id))
+            wid_expr = index.create_index_expression('NO_W_ID',str(w_id))
+            clause = index.create_index_clause([did_expr,wid_expr],count=1)
             newOrder=self.new_ordercf.get_indexed_slices(clause)
             flag=0
             for key, column in newOrder:
@@ -409,11 +409,11 @@ class CassandraDriver(AbstractDriver):
 
             c_id=str(o['O_C_ID'])
 
-            oid_expr = create_index_expression('OL_O_ID',str(no_o_id))
-            did_expr = create_index_expression('OL_D_ID',str(d_id))
-            wid_expr = create_index_expression('OL_W_ID',str(w_id))
+            oid_expr = index.create_index_expression('OL_O_ID',str(no_o_id))
+            did_expr = index.create_index_expression('OL_D_ID',str(d_id))
+            wid_expr = index.create_index_expression('OL_W_ID',str(w_id))
 
-            clause = create_index_clause([oid_expr,did_expr,wid_expr],count=100000)
+            clause = index.create_index_clause([oid_expr,did_expr,wid_expr],count=100000)
             orderLine=self.order_linecf.get_indexed_slices(clause)
 
             ol_total=0
@@ -579,10 +579,10 @@ class CassandraDriver(AbstractDriver):
             c_credit = str(customer['C_CREDIT'])
         else:
             #getCustomerByLastName
-            c_1_expr = create_index_expression('C_W_ID',str(w_id))
-            c_2_expr = create_index_expression('C_D_ID',str(d_id))
-            c_3_expr = create_index_expression('C_LAST',str(c_last))
-            clause = create_index_clause([c_1_expr,c_2_expr,c_3_expr],count=1000)
+            c_1_expr = index.create_index_expression('C_W_ID',str(w_id))
+            c_2_expr = index.create_index_expression('C_D_ID',str(d_id))
+            c_3_expr = index.create_index_expression('C_LAST',str(c_last))
+            clause = index.create_index_clause([c_1_expr,c_2_expr,c_3_expr],count=1000)
 
             newcustomer = self.customercf.get_indexed_slices(clause)
             firstnames=[]
@@ -591,10 +591,10 @@ class CassandraDriver(AbstractDriver):
             for key, column in newcustomer:
                 firstnames.append(column['C_FIRST'])
                 namecnt+=1
-            index = (namecnt-1)/2
-            firstname=firstnames[index]
-            c_4_expr = create_index_expression('C_LAST',str(c_last))
-            clause = create_index_clause([c_1_expr,c_2_expr,c_3_expr,c_4_expr],count=1)
+            idx = (namecnt-1)/2
+            firstname=firstnames[idx]
+            c_4_expr = index.create_index_expression('C_LAST',str(c_last))
+            clause = index.create_index_clause([c_1_expr,c_2_expr,c_3_expr,c_4_expr],count=1)
             newcustomer = self.customercf.get_indexed_slices(clause)
             for key, column in newcustomer:
                 c_id = column['C_ID']
@@ -638,10 +638,10 @@ class CassandraDriver(AbstractDriver):
         assert d_id, pformat(params)
 
         if c_id == None:
-            last_expr = create_index_expression('C_LAST',str(c_last))
-            did_expr = create_index_expression('C_D_ID',str(d_id))
-            wid_expr = create_index_expression('C_W_ID',str(w_id))
-            clause = create_index_clause([last_expr,did_expr,wid_expr],count=10000)
+            last_expr = index.create_index_expression('C_LAST',str(c_last))
+            did_expr = index.create_index_expression('C_D_ID',str(d_id))
+            wid_expr = index.create_index_expression('C_W_ID',str(w_id))
+            clause = index.create_index_clause([last_expr,did_expr,wid_expr],count=10000)
             all_customers=self.customercf.get_indexed_slices(clause)
             first_names=[ ]
             c_ids=[]
@@ -652,20 +652,20 @@ class CassandraDriver(AbstractDriver):
                 namecnt = namecnt+1
             namecnt=len(first_names)
             assert namecnt>0
-            index=(namecnt-1)/2
-            first_name=first_names[index]
+            idx = (namecnt-1)/2
+            first_name = first_names[idx]
             assert first_name!=None
-            c_id=c_ids[index]
+            c_id=c_ids[idx]
             assert c_id!=None
 
         key1=str(c_id).zfill(5)+str(d_id).zfill(5)+str(w_id).zfill(5)
         res1=self.customercf.get(key1)
         customer=[res1['C_ID'],res1['C_FIRST'],res1['C_MIDDLE'],res1['C_LAST'],res1['C_BALANCE']]
 
-        cid_expr = create_index_expression('O_C_ID',str(c_id))
-        did_expr = create_index_expression('O_D_ID',str(d_id))
-        wid_expr = create_index_expression('O_W_ID',str(w_id))
-        clause = create_index_clause([cid_expr,did_expr,wid_expr],count=100000)
+        cid_expr = index.create_index_expression('O_C_ID',str(c_id))
+        did_expr = index.create_index_expression('O_D_ID',str(d_id))
+        wid_expr = index.create_index_expression('O_W_ID',str(w_id))
+        clause = index.create_index_clause([cid_expr,did_expr,wid_expr],count=100000)
         all_orders=self.orderscf.get_indexed_slices(clause)
 
         last_order_oid=0
@@ -679,10 +679,10 @@ class CassandraDriver(AbstractDriver):
 
         orderLines = []
         if last_order_oid>0:
-            oid_expr = create_index_expression('OL_O_ID',str(last_order_oid))
-            did_expr = create_index_expression('OL_D_ID',str(d_id))
-            wid_expr = create_index_expression('OL_W_ID',str(w_id))
-            clause = create_index_clause([oid_expr,did_expr,wid_expr])
+            oid_expr = index.create_index_expression('OL_O_ID',str(last_order_oid))
+            did_expr = index.create_index_expression('OL_D_ID',str(d_id))
+            wid_expr = index.create_index_expression('OL_W_ID',str(w_id))
+            clause = index.create_index_clause([oid_expr,did_expr,wid_expr])
             orderLine=self.order_linecf.get_indexed_slices(clause)
             for key, column in orderLine:
                 orderLines.append([column['OL_SUPPLY_W_ID'],column['OL_I_ID'],column['OL_QUANTITY'],column['OL_AMOUNT'],column['OL_DELIVERY_D']])
@@ -704,16 +704,19 @@ class CassandraDriver(AbstractDriver):
         #getStockCount
         o_id = d['D_NEXT_O_ID']
 
-        s_q_expr = create_index_expression('S_QUANTITY',str(threshold), LT)
-        s_q_expr2 = create_index_expression('S_W_ID',str(w_id))
-        clause = create_index_clause([s_q_expr,s_q_expr2])
+        s_q_expr = index.create_index_expression('S_QUANTITY',str(threshold),
+                                                 index.LT)
+        s_q_expr2 = index.create_index_expression('S_W_ID',str(w_id))
+        clause = index.create_index_clause([s_q_expr,s_q_expr2])
         newstock = self.stockcf.get_indexed_slices(clause)
 
-        ol_expr = create_index_expression('OL_W_ID',str(w_id))
-        ol_expr2 = create_index_expression('OL_D_ID',str(d_id))
-        ol_expr3 = create_index_expression('OL_O_ID',str(o_id),LT)
-        ol_expr4 = create_index_expression('OL_O_ID', str(int(o_id)-20),GTE)
-        clause2 = create_index_clause([ol_expr,ol_expr2])
+        ol_expr = index.create_index_expression('OL_W_ID',str(w_id))
+        ol_expr2 = index.create_index_expression('OL_D_ID',str(d_id))
+        ol_expr3 = index.create_index_expression('OL_O_ID',str(o_id),
+                                                 index.LT)
+        ol_expr4 = index.create_index_expression('OL_O_ID', str(int(o_id)-20),
+                                                 index.GTE)
+        clause2 = index.create_index_clause([ol_expr,ol_expr2])
         neworderline = self.order_linecf.get_indexed_slices(clause2)
 
         count = 0
