@@ -254,7 +254,7 @@ class Loader:
         o_entry_d = datetime.now()
         o_carrier_id = constants.NULL_CARRIER_ID if newOrder else rand.number(constants.MIN_CARRIER_ID, constants.MAX_CARRIER_ID)
         o_all_local = constants.INITIAL_ALL_LOCAL
-        return [ o_id, o_c_id, o_d_id, o_w_id, o_entry_d, o_carrier_id, o_ol_cnt, o_all_local ]
+        return [o_id, o_d_id, o_w_id, o_c_id, o_entry_d, o_carrier_id, o_ol_cnt, o_all_local]
     ## DEF
 
     ## ==============================================
